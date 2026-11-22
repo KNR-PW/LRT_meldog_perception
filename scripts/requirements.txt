@@ -1,0 +1,17 @@
+# Dependencies of scripts/export_model.py (dev machine, .pt -> .onnx).
+# Not needed on the robot: there .onnx -> .engine uses the TensorRT Python
+# bindings shipped with JetPack (system package, not pip).
+#
+#   python3 -m venv ~/venvs/meldog_export
+#   source ~/venvs/meldog_export/bin/activate
+#   pip install -r scripts/requirements.txt
+
+# Export runs on CPU -> CPU-only torch wheels (~200 MB instead of a few GB)
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch
+torchvision
+ultralytics>=8.4.0   
+onnx
+onnxslim             
+onnxruntime          

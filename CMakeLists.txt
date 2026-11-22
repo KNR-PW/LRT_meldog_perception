@@ -15,4 +15,12 @@ target_include_directories(camera_listener PRIVATE include)
 
 ament_target_dependencies(camera_listener rclcpp sensor_msgs)
 
+install(TARGETS camera_listener
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()

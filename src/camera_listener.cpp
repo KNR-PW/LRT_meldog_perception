@@ -4,6 +4,8 @@ namespace meldog_perception {
 
     CameraListener::CameraListener() : Node("camera_listener") 
     {
+        RCLCPP_INFO(this->get_logger(), "[CameraListener] CameraListener node has been started...");
+        
         const auto camera_topic = this->declare_parameter("camera_topic", "/camera/camera/color/image_raw");
 
         auto cameraQos = rclcpp::SensorDataQoS();
@@ -15,6 +17,11 @@ namespace meldog_perception {
 
     void CameraListener::cameraListenerCallback(sensor_msgs::msg::Image::SharedPtr msg)
     {
+        if(!msg->data.empty()) {
+            RCLCPP_WARN(this->get_logger(), "[CameraListener] Couldn't access camera rgb data...");
+            return;
+        }
+
         // TO DO
     }
 
