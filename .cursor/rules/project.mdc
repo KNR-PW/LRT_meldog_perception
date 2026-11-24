@@ -1,0 +1,29 @@
+---
+description: Project context for meldog_perception (ROS 2 Humble perception for a quadruped robot)
+alwaysApply: true
+---
+
+# meldog_perception
+
+Perception package for the Meldog quadruped robot.
+
+## Target platform
+- **ROS 2 Humble** on **Ubuntu 22.04** (Python 3.10, CMake 3.22, OpenCV 4.5). Do not use APIs that exist only in Iron/Jazzy or later, and never suggest ROS 1 (`catkin`, `rospy`, `roscpp`).
+- Runtime target: NVIDIA Jetson (JetPack 6). Inference runs with **TensorRT** there (`.onnx` → `.engine` on the device).
+- Developer machines have no NVIDIA GPU: code that needs CUDA/TensorRT must be optional at build time, and a CPU path (onnxruntime / OpenCV DNN) should exist for local testing.
+- Camera: Intel RealSense via `realsense2_camera`. Color topic: `/camera/camera/color/image_raw`.
+
+## Build
+- Built with `colcon` (`ament_cmake`), inside the dev container in `.devcontainer/`.
+- The repo is mounted at `~/ws/src/meldog_perception`; build from `~/ws`, for example: `colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`.
+- Add every new dependency to both `package.xml` and `CMakeLists.txt`.
+
+## C++ style
+- C++17, rclcpp. Code lives in the `meldog_perception` namespace, headers in `include/meldog_perception/`.
+- Member variables are prefixed with `_` (e.g. `_cameraSub`); methods use camelCase.
+- Image subscriptions use `rclcpp::SensorDataQoS()`. Keep image callbacks cheap and avoid copies (`cv_bridge::toCvShare`).
+- Expose configuration as node parameters (`declare_parameter`), never hard-code it.
+
+## Python
+- Launch files are Python (`launch/*.launch.py`).
+- `scripts/` holds offline tools (model export). They run in a separate host venv (`scripts/requirements.txt`, torch CPU), never inside ROS nodes.
