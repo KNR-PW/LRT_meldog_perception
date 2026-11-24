@@ -1,0 +1,90 @@
+{
+  "name": "meldog_perception (ROS 2 Humble)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": { "USERNAME": "ros", "USER_UID": "1000", "USER_GID": "1000" }
+  },
+  "remoteUser": "ros",
+  "updateRemoteUserUID": true,
+
+  // The repo is the package; the editor opens the colcon workspace around it.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/ros/ws/src/meldog_perception,type=bind",
+  "workspaceFolder": "/home/ros/ws",
+
+  "mounts": [
+    // build artefacts survive container rebuilds
+    "source=meldog-humble-build,target=/home/ros/ws/build,type=volume",
+    "source=meldog-humble-install,target=/home/ros/ws/install,type=volume",
+    "source=meldog-humble-log,target=/home/ros/ws/log,type=volume",
+    "source=meldog-humble-ccache,target=/home/ros/.ccache,type=volume",
+    // RealSense / USB hot-plug
+    "source=/dev,target=/dev,type=bind",
+    // rviz / rqt over X11
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+  ],
+
+  "runArgs": [
+    "--network=host",
+    "--ipc=host",
+    "--privileged"
+  ],
+
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "ROS_DOMAIN_ID": "${localEnv:ROS_DOMAIN_ID:0}",
+    "RCUTILS_COLORIZED_OUTPUT": "1"
+  },
+
+  "postCreateCommand": "sudo apt-get update && rosdep update && rosdep install --from-paths src --ignore-src -y",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "vadimcn.vscode-lldb",
+        "twxs.cmake",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "ranch-hand-robotics.rde-ros-2",
+        "redhat.vscode-xml",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+
+        "clangd.path": "/usr/bin/clangd",
+        "clangd.arguments": [
+          "--compile-commands-dir=/home/ros/ws/build/meldog_perception",
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=never"
+        ],
+        "C_Cpp.intelliSenseEngine": "disabled",
+
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+          "/opt/ros/humble/lib/python3.10/site-packages",
+          "/opt/ros/humble/local/lib/python3.10/dist-packages"
+        ],
+        "cursorpyright.analysis.extraPaths": [
+          "/opt/ros/humble/lib/python3.10/site-packages",
+          "/opt/ros/humble/local/lib/python3.10/dist-packages"
+        ],
+        "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+
+        "files.associations": { "*.launch.py": "python", "*.xacro": "xml" },
+        "files.watcherExclude": {
+          "**/build/**": true,
+          "**/install/**": true,
+          "**/log/**": true
+        },
+        "search.exclude": {
+          "build": true,
+          "install": true,
+          "log": true
+        }
+      }
+    }
+  }
+}
