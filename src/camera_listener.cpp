@@ -17,7 +17,7 @@ namespace meldog_perception {
 
     void CameraListener::cameraListenerCallback(sensor_msgs::msg::Image::SharedPtr msg)
     {
-        if(!msg->data.empty()) {
+        if(msg->data.empty()) {
             RCLCPP_WARN(this->get_logger(), "[CameraListener] Couldn't access camera rgb data...");
             return;
         }
