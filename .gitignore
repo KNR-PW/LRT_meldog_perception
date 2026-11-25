@@ -3,3 +3,4 @@
 # TensorRT engines are GPU- and version-specific; build them on each device
 *.engine
 *.engine.tmp
+models/*.onnx
