@@ -2,9 +2,9 @@
 
 namespace meldog_perception {
 
-    ReidEncoder::ReidEncoder(const std::string& networkPath)
+    ReidEncoder::ReidEncoder(const std::string& networkPath) : _soNetModel(networkPath)
     {
-        // TO DO
+        
     }
 
     std::vector<float> ReidEncoder::encode(const cv::Mat& rgbImage, const cv::Mat& mask, const cv::Rect2f bbox)

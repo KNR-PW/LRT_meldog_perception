@@ -6,6 +6,8 @@
 
 #include <opencv2/core/mat.hpp>
 
+#include "so_net_engine.hpp"
+
 namespace meldog_perception {
 
     class ReidEncoder 
@@ -20,7 +22,8 @@ namespace meldog_perception {
     private:
 
         cv::Mat preprocess(const cv::Mat& rgbImage, const cv::Mat& mask, const cv::Rect2f bbox);  
-
-        void loadNetwork(const std::string& networkPath); 
+ 
+    private:
+        SoNetEngine _soNetModel; 
     };
 }
