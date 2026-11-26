@@ -27,6 +27,10 @@ namespace meldog_perception {
 
         std::vector<std::vector<float>> infer(const std::vector<std::vector<float>>& data); 
 
+        std::pair<std::size_t, std::size_t> getInputDim() const;
+        std::size_t getMaxBatchSize() const { return _maxBatch; }
+        std::size_t getEmbeddingSize() const { return _embeddingSize; }
+
     private:
 
         void initializeNetwork(const std::string& networkPath);
@@ -55,5 +59,7 @@ namespace meldog_perception {
         const char* _inputName = nullptr;
         std::size_t _sampleSize = 0;
         std::size_t _embeddingSize = 0;
+        std::size_t _inputHeight = 0;
+        std::size_t _inputWidth = 0;
     };
 }

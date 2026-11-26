@@ -183,6 +183,9 @@ namespace meldog_perception {
         const nvinfer1::Dims inputDims = _nvCudaEngine->getTensorShape(_inputName);
         const nvinfer1::Dims outputDims = _nvCudaEngine->getTensorShape(outputName);
 
+        _inputHeight = inputDims.d[2];
+        _inputWidth = inputDims.d[3];
+
         if (inputDims.d[0] == -1) {
             _maxBatch = static_cast<std::size_t>(_nvCudaEngine->getProfileShape(_inputName, 0, nvinfer1::OptProfileSelector::kMAX).d[0]);
         }
@@ -190,7 +193,7 @@ namespace meldog_perception {
             _maxBatch = static_cast<std::size_t>(inputDims.d[0]);
         }
 
-        _sampleSize = static_cast<std::size_t>(inputDims.d[1] * inputDims.d[2] * inputDims.d[3]);  
+        _sampleSize = static_cast<std::size_t>(inputDims.d[1] * _inputHeight * _inputWidth);  
         _embeddingSize = static_cast<std::size_t>(outputDims.d[1]);                               
 
         const std::size_t inputBytes = _maxBatch * _sampleSize * sizeof(float);       
@@ -212,5 +215,10 @@ namespace meldog_perception {
             !_nvExecutionContext->setTensorAddress(outputName, _outputBuffer.get())) {
             throw std::runtime_error("[SoNetEngine] Couldn't bind tensor addresses");
         }
+    }
+
+    std::pair<std::size_t, std::size_t> SoNetEngine::getInputDim() const
+    {
+        return std::pair<std::size_t, std::size_t>(_inputHeight, _inputWidth);
     }
 }
