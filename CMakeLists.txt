@@ -61,6 +61,9 @@ endif()
 add_library(meldog_perception_core SHARED
   src/inference/inference_backend.cpp
   src/yolo_detector.cpp
+  src/tracking/kalman_box_filter.cpp
+  src/tracking/linear_assignment.cpp
+  src/tracking/byte_tracker.cpp
 )
 target_include_directories(meldog_perception_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -91,6 +94,14 @@ rclcpp_components_register_node(person_detector_component
   PLUGIN "meldog_perception::PersonDetectorNode"
   EXECUTABLE person_detector)
 
+add_library(person_tracker_component SHARED src/person_tracker_node.cpp)
+target_link_libraries(person_tracker_component meldog_perception_core)
+ament_target_dependencies(person_tracker_component
+  rclcpp rclcpp_components sensor_msgs vision_msgs cv_bridge)
+rclcpp_components_register_node(person_tracker_component
+  PLUGIN "meldog_perception::PersonTrackerNode"
+  EXECUTABLE person_tracker)
+
 add_executable(camera_listener src/camera_listener.cpp)
 target_include_directories(camera_listener PRIVATE include)
 ament_target_dependencies(camera_listener rclcpp sensor_msgs)
@@ -99,7 +110,7 @@ ament_target_dependencies(camera_listener rclcpp sensor_msgs)
 add_executable(detect_image src/tools/detect_image.cpp)
 target_link_libraries(detect_image meldog_perception_core)
 
-install(TARGETS meldog_perception_core person_detector_component
+install(TARGETS meldog_perception_core person_detector_component person_tracker_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -111,5 +122,15 @@ install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY models/ DESTINATION share/${PROJECT_NAME}/models
   FILES_MATCHING PATTERN "*.onnx")
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_tracking
+    test/test_linear_assignment.cpp
+    test/test_kalman_box_filter.cpp
+    test/test_byte_tracker.cpp
+  )
+  target_link_libraries(test_tracking meldog_perception_core)
+endif()
 
 ament_package()

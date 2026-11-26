@@ -62,6 +62,22 @@ ros2 run meldog_perception detect_image models/yolo26n.onnx image.jpg --backend 
 python3 scripts/reference_detect.py models/yolo26n.onnx image.jpg
 ```
 
+## Person tracking
+
+`person_tracker` runs ByteTrack on `detections` and publishes `tracks`
+(`vision_msgs/Detection2DArray`, `Detection2D::id` = stable person ID). It logs
+`Person N entered` / `Person N left`; with `debug_image:=true` it publishes `tracks/image`
+with IDs and velocity arrows. Parameters live in `config/person_tracker.yaml`.
+
+- A person hidden for less than `lost_timeout` (1 s) keeps the ID; after that they get a new one
+  (re-identification by appearance is the ReID module's job).
+- ByteTrack also uses low-score detections (0.1–0.5) to keep tracks through partial occlusion,
+  which is why `person_detector`'s `score_threshold` is 0.1.
+- The tracker is plain C++ in `meldog_perception_core` (`tracking/`), with unit tests:
+  ```bash
+  colcon test --packages-select meldog_perception && colcon test-result --verbose
+  ```
+
 ## Model export (host, outside the container)
 
 See `scripts/requirements.txt`: export runs in a separate venv with CPU-only torch.

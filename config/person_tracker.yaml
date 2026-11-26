@@ -1,0 +1,20 @@
+person_tracker:
+  ros__parameters:
+    detections_topic: detections   # from person_detector
+
+    # ByteTrack thresholds. person_detector must publish detections down to
+    # low_threshold (its score_threshold), otherwise the second association
+    # that keeps partly occluded people tracked has nothing to work with.
+    high_threshold: 0.5            # first association
+    low_threshold: 0.1             # second association, only extends existing tracks
+    new_track_threshold: 0.6       # minimum score to start a new person
+    match_threshold: 0.8           # max cost 1 - IoU*score
+    second_match_threshold: 0.5
+    unconfirmed_match_threshold: 0.7
+    fuse_score: true
+
+    lost_timeout: 1.0              # seconds a person may be hidden and keep the ID
+    reference_fps: 30.0            # Kalman noise is tuned per frame at this rate
+
+    image_topic: /camera/camera/color/image_raw
+    publish_debug_image: false     # tracks/image with IDs and velocity arrows

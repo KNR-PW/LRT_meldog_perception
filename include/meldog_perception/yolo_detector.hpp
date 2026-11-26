@@ -5,16 +5,10 @@
 
 #include <opencv2/core.hpp>
 
+#include "meldog_perception/detection.hpp"
 #include "meldog_perception/inference/inference_backend.hpp"
 
 namespace meldog_perception {
-
-    struct Detection
-    {
-        cv::Rect2f box;     // pixels of the original image
-        float score = 0.0F;
-        int classId = -1;
-    };
 
     struct DetectorConfig
     {

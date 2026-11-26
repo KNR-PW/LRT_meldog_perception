@@ -6,7 +6,7 @@ person_detector:
     fp16: true                 # TensorRT only
     cpu_threads: 0             # ONNX Runtime only, 0 = default
 
-    score_threshold: 0.4
+    score_threshold: 0.1       # low on purpose: person_tracker uses 0.1-0.5 detections to keep tracks
     nms_threshold: 0.45        # only for models exported with an NMS head
     max_detections: 100
     class_ids: [0]             # COCO 0 = person

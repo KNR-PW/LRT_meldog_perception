@@ -42,6 +42,17 @@ def generate_launch_description():
         ],
     )
 
+    person_tracker = Node(
+        package="meldog_perception",
+        executable="person_tracker",
+        name="person_tracker",
+        output="screen",
+        parameters=[
+            PathJoinSubstitution([pkg_share, "config", "person_tracker.yaml"]),
+            {"publish_debug_image": LaunchConfiguration("debug_image")},
+        ],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             "serial_no",
@@ -66,8 +77,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "debug_image",
             default_value="false",
-            description="Publish detections/image with drawn boxes.",
+            description="Publish detections/image and tracks/image with drawn boxes.",
         ),
         realsense,
         person_detector,
+        person_tracker,
     ])
