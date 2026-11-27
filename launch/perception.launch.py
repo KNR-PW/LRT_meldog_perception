@@ -50,6 +50,7 @@ def generate_launch_description():
             PathJoinSubstitution([pkg_share, "config", "person_tracker.yaml"]),
             {"publish_debug_image": LaunchConfiguration("debug_image")},
         ],
+        remappings=[("image", "/camera/camera/color/image_raw")],  # only for the debug image
     )
 
     return LaunchDescription([

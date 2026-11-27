@@ -11,25 +11,15 @@ namespace meldog_perception {
 
         constexpr size_t kMaxRecentImages = 30;
 
+        // person_detector publishes one hypothesis per detection.
         Detection fromMessage(const vision_msgs::msg::Detection2D& msg)
         {
-            Detection detection;
             const auto& bbox = msg.bbox;
+            Detection detection;
             detection.box = cv::Rect2f(static_cast<float>(bbox.center.position.x - bbox.size_x / 2.0),
                                        static_cast<float>(bbox.center.position.y - bbox.size_y / 2.0),
                                        static_cast<float>(bbox.size_x), static_cast<float>(bbox.size_y));
-
-            for (const auto& result : msg.results) {
-                if (result.hypothesis.score <= detection.score) {
-                    continue;
-                }
-                detection.score = static_cast<float>(result.hypothesis.score);
-                try {
-                    detection.classId = std::stoi(result.hypothesis.class_id);
-                } catch (const std::exception&) {
-                    detection.classId = -1;
-                }
-            }
+            detection.score = msg.results.empty() ? 0.0F : static_cast<float>(msg.results[0].hypothesis.score);
             return detection;
         }
 
@@ -53,30 +43,21 @@ namespace meldog_perception {
     {
         tracking::TrackerConfig config;
         config.highThreshold = static_cast<float>(declare_parameter<double>("high_threshold", 0.5));
-        config.lowThreshold = static_cast<float>(declare_parameter<double>("low_threshold", 0.1));
-        config.newTrackThreshold = static_cast<float>(declare_parameter<double>("new_track_threshold", 0.6));
         config.matchThreshold = static_cast<float>(declare_parameter<double>("match_threshold", 0.8));
-        config.secondMatchThreshold = static_cast<float>(declare_parameter<double>("second_match_threshold", 0.5));
-        config.unconfirmedMatchThreshold =
-            static_cast<float>(declare_parameter<double>("unconfirmed_match_threshold", 0.7));
-        config.fuseScore = declare_parameter<bool>("fuse_score", true);
         config.lostTimeout = declare_parameter<double>("lost_timeout", 1.0);
-        config.referenceFps = declare_parameter<double>("reference_fps", 30.0);
         _tracker = tracking::ByteTracker(config);
 
-        const auto detectionsTopic = declare_parameter<std::string>("detections_topic", "detections");
-        const auto imageTopic = declare_parameter<std::string>("image_topic", "/camera/camera/color/image_raw");
         const bool publishDebugImage = declare_parameter<bool>("publish_debug_image", false);
 
         _tracksPub = create_publisher<vision_msgs::msg::Detection2DArray>("tracks", 10);
-        _detectionsSub = create_subscription<vision_msgs::msg::Detection2DArray>(detectionsTopic, 10,
+        _detectionsSub = create_subscription<vision_msgs::msg::Detection2DArray>("detections", 10,
             [this](vision_msgs::msg::Detection2DArray::ConstSharedPtr msg) { detectionsCallback(std::move(msg)); });
 
         if (publishDebugImage) {
             _debugImagePub = create_publisher<sensor_msgs::msg::Image>("tracks/image", rclcpp::SensorDataQoS());
             auto qos = rclcpp::SensorDataQoS();
             qos.keep_last(5);
-            _imageSub = create_subscription<sensor_msgs::msg::Image>(imageTopic, qos,
+            _imageSub = create_subscription<sensor_msgs::msg::Image>("image", qos,
                 [this](sensor_msgs::msg::Image::ConstSharedPtr msg) { imageCallback(std::move(msg)); });
         }
 
@@ -113,7 +94,7 @@ namespace meldog_perception {
             out.bbox.size_y = track.box.height;
 
             vision_msgs::msg::ObjectHypothesisWithPose hypothesis;
-            hypothesis.hypothesis.class_id = std::to_string(track.classId);
+            hypothesis.hypothesis.class_id = "0";   // person
             hypothesis.hypothesis.score = track.score;
             out.results.push_back(hypothesis);
 
@@ -128,7 +109,6 @@ namespace meldog_perception {
 
     void PersonTrackerNode::imageCallback(sensor_msgs::msg::Image::ConstSharedPtr msg)
     {
-        std::lock_guard<std::mutex> lock(_imagesMutex);
         _recentImages.push_back(std::move(msg));
         while (_recentImages.size() > kMaxRecentImages) {
             _recentImages.pop_front();
@@ -139,13 +119,10 @@ namespace meldog_perception {
                                               const std::vector<tracking::Track>& tracks)
     {
         sensor_msgs::msg::Image::ConstSharedPtr image;
-        {
-            std::lock_guard<std::mutex> lock(_imagesMutex);
-            for (auto it = _recentImages.rbegin(); it != _recentImages.rend(); ++it) {
-                if ((*it)->header.stamp == header.stamp) {
-                    image = *it;
-                    break;
-                }
+        for (auto it = _recentImages.rbegin(); it != _recentImages.rend(); ++it) {
+            if ((*it)->header.stamp == header.stamp) {
+                image = *it;
+                break;
             }
         }
         if (!image) {

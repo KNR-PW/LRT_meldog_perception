@@ -11,29 +11,17 @@
 
 namespace meldog_perception::tracking {
 
+    // The three knobs of the original ByteTrack; everything else is fixed in byte_tracker.cpp.
     struct TrackerConfig
     {
-        // Detections with score >= highThreshold go to the first association;
-        // [lowThreshold, highThreshold) only keep existing tracks alive (the
-        // "BYTE" step: partly occluded people often get a low score).
+        // Detections with score >= highThreshold go to the main association and can
+        // start new people; lower ones (down to 0.1) only keep existing tracks alive,
+        // because partly occluded people often get a low score.
         float highThreshold = 0.5F;
-        float lowThreshold = 0.1F;
-        // Minimum score of an unmatched detection to start a new track.
-        float newTrackThreshold = 0.6F;
-
-        // Maximum matching cost (1 - IoU, or 1 - IoU * score with fuseScore).
-        float matchThreshold = 0.8F;            // confirmed and lost tracks vs high detections
-        float secondMatchThreshold = 0.5F;      // remaining tracks vs low detections
-        float unconfirmedMatchThreshold = 0.7F; // new tracks vs the remaining high detections
-        bool fuseScore = true;
-
-        // How long a track that lost its detection is kept, so the person gets the
-        // same ID back after a short occlusion.
-        double lostTimeout = 1.0;               // seconds
-        // Frame rate the Kalman noise is tuned for; other rates are scaled to it.
-        double referenceFps = 30.0;
-        // A tracked and a lost track overlapping this much are the same person.
-        float duplicateIou = 0.85F;
+        // Maximum matching cost, 1 - IoU * score.
+        float matchThreshold = 0.8F;
+        // Seconds a person may stay hidden and still get the same ID back.
+        double lostTimeout = 1.0;
     };
 
     struct Track
@@ -42,11 +30,8 @@ namespace meldog_perception::tracking {
         cv::Rect2f box;             // Kalman-filtered box, pixels
         cv::Point2f velocity;       // box center, pixels per second
         float score = 0.0F;         // score of the last matched detection
-        int classId = -1;
         int detectionIndex = -1;    // index in the detections given to the last update()
-        double firstSeen = 0.0;     // seconds
-        double lastSeen = 0.0;
-        int hits = 0;               // number of matched detections
+        double lastSeen = 0.0;      // seconds
     };
 
     struct TrackEvent
@@ -102,11 +87,9 @@ namespace meldog_perception::tracking {
             TrackState state = TrackState::Tentative;
             int id = 0;     // 0 until confirmed
             float score = 0.0F;
-            int classId = -1;
             int detectionIndex = -1;
             double firstSeen = 0.0;
             double lastSeen = 0.0;
-            int hits = 1;
         };
 
         struct Association

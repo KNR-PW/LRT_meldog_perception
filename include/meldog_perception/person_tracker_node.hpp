@@ -1,7 +1,6 @@
 #pragma once
 
 #include <deque>
-#include <mutex>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -38,7 +37,7 @@ namespace meldog_perception {
         // Debug image: the frame the detections came from, matched by timestamp.
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _imageSub;
         rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr _debugImagePub;
+        // Callbacks run on one thread (single-threaded executor), so no locking.
         std::deque<sensor_msgs::msg::Image::ConstSharedPtr> _recentImages;
-        std::mutex _imagesMutex;
     };
 }
