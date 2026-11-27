@@ -21,8 +21,11 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(vision_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs dnn)
 
 set(MELDOG_BACKENDS "")
 
@@ -36,8 +39,10 @@ if(MELDOG_HAS_TENSORRT)
   set(TENSORRT_ROOT "" CACHE PATH "TensorRT install prefix (only for tarball installs)")
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h HINTS ${TENSORRT_ROOT} PATH_SUFFIXES include)
   find_library(TENSORRT_LIBRARY nvinfer HINTS ${TENSORRT_ROOT} PATH_SUFFIXES lib lib64)
-  if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIBRARY)
-    message(FATAL_ERROR "TensorRT not found (NvInfer.h / libnvinfer). Install it, set -DTENSORRT_ROOT=<prefix>, "
+  # nvonnxparser: only TensorRtBackend (YOLO) uses it, to build engines from .onnx at runtime
+  find_library(TENSORRT_ONNXPARSER_LIBRARY nvonnxparser HINTS ${TENSORRT_ROOT} PATH_SUFFIXES lib lib64)
+  if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIBRARY OR NOT TENSORRT_ONNXPARSER_LIBRARY)
+    message(FATAL_ERROR "TensorRT not found (NvInfer.h / libnvinfer / libnvonnxparser). Install it, set -DTENSORRT_ROOT=<prefix>, "
                         "or disable this backend with -DMELDOG_HAS_TENSORRT=OFF")
   endif()
 
@@ -78,38 +83,86 @@ add_library(meldog_perception_core STATIC
   src/target_identifier.cpp
   src/reid_encoder.cpp
   src/inference/osnet_engine_factory.cpp
+  src/inference/inference_backend.cpp
+  src/yolo_detector.cpp
+  src/tracking/kalman_box_filter.cpp
+  src/tracking/linear_assignment.cpp
+  src/tracking/byte_tracker.cpp
 )
 set_target_properties(meldog_perception_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(meldog_perception_core PUBLIC include)
 target_link_libraries(meldog_perception_core PUBLIC ${OpenCV_LIBS})
 
 if(MELDOG_HAS_TENSORRT)
-  target_sources(meldog_perception_core PRIVATE src/inference/trt_osnet_engine.cpp)
+  target_sources(meldog_perception_core PRIVATE
+    src/inference/trt_osnet_engine.cpp
+    src/inference/tensorrt_backend.cpp
+  )
   target_compile_definitions(meldog_perception_core PRIVATE MELDOG_HAS_TENSORRT)
   target_include_directories(meldog_perception_core SYSTEM PRIVATE ${TENSORRT_INCLUDE_DIR})
   target_link_libraries(meldog_perception_core
     PUBLIC  CUDA::cudart
-    PRIVATE ${TENSORRT_LIBRARY}
+    PRIVATE ${TENSORRT_LIBRARY} ${TENSORRT_ONNXPARSER_LIBRARY}
   )
 endif()
 
 if(MELDOG_HAS_ONNXRUNTIME)
-  target_sources(meldog_perception_core PRIVATE src/inference/onnx_osnet_engine.cpp)
+  target_sources(meldog_perception_core PRIVATE
+    src/inference/onnx_osnet_engine.cpp
+    src/inference/onnxruntime_backend.cpp
+  )
   target_compile_definitions(meldog_perception_core PRIVATE MELDOG_HAS_ONNXRUNTIME)
   target_include_directories(meldog_perception_core SYSTEM PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
   target_link_libraries(meldog_perception_core PRIVATE ${ONNXRUNTIME_LIBRARY})
 endif()
 
+# --- ROS nodes ----------------------------------------------------------------
+add_library(person_detector_component SHARED src/person_detector_node.cpp)
+target_link_libraries(person_detector_component meldog_perception_core)
+ament_target_dependencies(person_detector_component
+  rclcpp rclcpp_components sensor_msgs vision_msgs cv_bridge)
+rclcpp_components_register_node(person_detector_component
+  PLUGIN "meldog_perception::PersonDetectorNode"
+  EXECUTABLE person_detector)
+
+add_library(person_tracker_component SHARED src/person_tracker_node.cpp)
+target_link_libraries(person_tracker_component meldog_perception_core)
+ament_target_dependencies(person_tracker_component
+  rclcpp rclcpp_components sensor_msgs vision_msgs cv_bridge)
+rclcpp_components_register_node(person_tracker_component
+  PLUGIN "meldog_perception::PersonTrackerNode"
+  EXECUTABLE person_tracker)
+
 add_executable(camera_listener src/camera_listener.cpp)
 target_include_directories(camera_listener PRIVATE include)
 ament_target_dependencies(camera_listener rclcpp sensor_msgs)
 
-install(TARGETS camera_listener
+# --- tools ----------------------------------------------------------------------
+add_executable(detect_image src/tools/detect_image.cpp)
+target_link_libraries(detect_image meldog_perception_core)
+
+install(TARGETS person_detector_component person_tracker_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(TARGETS camera_listener detect_image
   DESTINATION lib/${PROJECT_NAME}
 )
-
-install(DIRECTORY launch
+install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
 )
+install(DIRECTORY models/ DESTINATION share/${PROJECT_NAME}/models
+  FILES_MATCHING PATTERN "*.onnx")
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_tracking
+    test/test_linear_assignment.cpp
+    test/test_kalman_box_filter.cpp
+    test/test_byte_tracker.cpp
+  )
+  target_link_libraries(test_tracking meldog_perception_core)
+endif()
 
 ament_package()

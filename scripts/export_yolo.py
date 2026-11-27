@@ -12,9 +12,9 @@ with, so build it on the target device (Jetson) from the .onnx.
 Example::
 
     # dev machine
-    python3 scripts/export_model.py models/yolo26n.pt
+    python3 scripts/export_yolo.py models/yolo26n.pt
     # Jetson
-    python3 scripts/export_model.py models/yolo26n.onnx --format engine
+    python3 scripts/export_yolo.py models/yolo26n.onnx --format engine
 """
 
 import argparse
@@ -40,8 +40,11 @@ def parse_args() -> argparse.Namespace:
 def export_onnx(pt_path: Path, onnx_path: Path, imgsz: list[int], opset: int) -> None:
     from ultralytics import YOLO
 
+    # nms=False keeps YOLO26's end-to-end head: output [1, 300, 6] rows of
+    # x1 y1 x2 y2 score class, no NMS needed in C++. Without it the export
+    # falls back to the one-to-many head [1, 84, anchors] that needs NMS.
     exported = YOLO(str(pt_path)).export(
-        format='onnx', imgsz=imgsz, opset=opset, simplify=True, device='cpu'
+        format='onnx', imgsz=imgsz, opset=opset, simplify=True, device='cpu', nms=False
     )
     shutil.move(exported, onnx_path)
 
