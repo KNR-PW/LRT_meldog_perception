@@ -10,9 +10,10 @@
 
 namespace meldog_perception {
 
-    ReidEncoder::ReidEncoder(const std::string& networkPath, const ReidConfig& config) : _soNetModel(networkPath), _config(config)
+    ReidEncoder::ReidEncoder(const std::string& networkPath, const ReidConfig& config)
+        : _osNetengine(inference::createOsNetEngine(networkPath)), _config(config)
     {
-
+        validateConfig(_config);
     }
 
     std::vector<std::vector<float>> ReidEncoder::encode(const cv::Mat& rgbImage, const cv::Mat& mask, const std::vector<cv::Rect2f>& bboxs)
@@ -37,8 +38,6 @@ namespace meldog_perception {
         for (std::size_t i = 0; i < bboxs.size(); ++i) {
             const cv::Rect rect = cv::Rect(bboxs[i]) & imageRect;
 
-            // Skip boxes with no area or too small to give a reliable embedding (people far away);
-            // they keep an empty entry in `embeddings`. Size is checked after clipping to the image.
             if (rect.empty() ||
                 static_cast<std::size_t>(rect.width) < _config.minBoxWidth ||
                 static_cast<std::size_t>(rect.height) < _config.minBoxHeight) {
@@ -49,7 +48,8 @@ namespace meldog_perception {
             sampleToBox.push_back(i);
         }
 
-        const std::size_t maxBatch = _soNetModel.getMaxBatchSize();
+        // Chunk size we want (config) limited by what the engine can take (TensorRT profile; unbounded for dynamic ONNX)
+        const std::size_t maxBatch = std::min(_config.maxBatchSize, _osNetengine->getMaxBatchSize());
 
         for (std::size_t start = 0; start < samples.size(); start += maxBatch) {
             const std::size_t end = std::min(start + maxBatch, samples.size());
@@ -57,7 +57,7 @@ namespace meldog_perception {
             std::vector<std::vector<float>> batch(std::make_move_iterator(samples.begin() + static_cast<std::ptrdiff_t>(start)),
                                                   std::make_move_iterator(samples.begin() + static_cast<std::ptrdiff_t>(end)));
 
-            std::vector<std::vector<float>> features = _soNetModel.infer(batch);
+            std::vector<std::vector<float>> features = _osNetengine->infer(batch);
 
             for (std::size_t k = 0; k < features.size(); ++k) {
                 std::vector<float>& embedding = features[k];
@@ -90,7 +90,7 @@ namespace meldog_perception {
         // Mean colour in 0..255: masked-out background becomes exactly 0 after normalization
         const cv::Scalar kMeanColor(0.485 * 255.0, 0.456 * 255.0, 0.406 * 255.0);
 
-        const auto [inputHeight, inputWidth] = _soNetModel.getInputDim();
+        const auto [inputHeight, inputWidth] = _osNetengine->getInputDim();
 
         cv::Mat crop;
         if (mask.empty()) {
@@ -101,15 +101,13 @@ namespace meldog_perception {
         }
 
         cv::Mat resized;
-        cv::resize(crop, resized, cv::Size(inputHeight, inputWidth), 0.0, 0.0, cv::INTER_LINEAR);
+        cv::resize(crop, resized, cv::Size(static_cast<int>(inputWidth), static_cast<int>(inputHeight)), 0.0, 0.0, cv::INTER_LINEAR);
 
         cv::Mat normalized;
         resized.convertTo(normalized, CV_32FC3, 1.0 / 255.0);
         cv::subtract(normalized, kMean, normalized);
         cv::divide(normalized, kStd, normalized);
 
-        //    HWC -> CHW: three single-channel Mats pointing into the sample buffer,
-        //    cv::split writes every channel straight into its plane (no extra copy)
         std::vector<float> sample(static_cast<std::size_t>(3 * inputHeight * inputWidth));
         const std::size_t planeSize = static_cast<std::size_t>(inputHeight * inputWidth);
 
@@ -121,5 +119,21 @@ namespace meldog_perception {
         cv::split(normalized, planes);
 
         return sample;
+    }
+
+    void ReidEncoder::validateConfig(const ReidConfig& config)
+    {
+        // std::size_t is unsigned and integral: 0 is the only invalid value (no negatives, no NaN/inf)
+        if (config.maxBatchSize == 0) {
+            throw std::invalid_argument("[ReidEncoder] ReidConfig::maxBatchSize must be greater than 0");
+        }
+
+        if (config.minBoxHeight == 0) {
+            throw std::invalid_argument("[ReidEncoder] ReidConfig::minBoxHeight must be greater than 0");
+        }
+
+        if (config.minBoxWidth == 0) {
+            throw std::invalid_argument("[ReidEncoder] ReidConfig::minBoxWidth must be greater than 0");
+        }
     }
 }

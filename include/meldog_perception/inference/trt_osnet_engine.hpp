@@ -1,11 +1,12 @@
 #pragma once 
 
-#include <array>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <cuda_runtime_api.h>
+
+#include "meldog_perception/inference/i_osnet_engine.hpp"
 
 namespace nvinfer1{
     class ILogger;
@@ -14,22 +15,22 @@ namespace nvinfer1{
     class IExecutionContext;
 }
 
-namespace meldog_perception {
+namespace meldog_perception::inference {
 
-    class SoNetEngine 
+    class TrtOsNetEngine final : public IOsNetEngine
     {
 
     public: 
 
-        SoNetEngine(const std::string& networkPath);
+        explicit  TrtOsNetEngine(const std::string& networkPath);
         
-        ~SoNetEngine();
+        ~TrtOsNetEngine() override;
 
-        std::vector<std::vector<float>> infer(const std::vector<std::vector<float>>& data); 
+        std::vector<std::vector<float>> infer(const std::vector<std::vector<float>>& data) override;
 
-        std::pair<std::size_t, std::size_t> getInputDim() const;
-        std::size_t getMaxBatchSize() const { return _maxBatch; }
-        std::size_t getEmbeddingSize() const { return _embeddingSize; }
+        std::pair<std::size_t, std::size_t> getInputDim() const override;
+        std::size_t getMaxBatchSize() const override { return _maxBatch; }
+        std::size_t getEmbeddingSize() const override { return _embeddingSize; }
 
     private:
 

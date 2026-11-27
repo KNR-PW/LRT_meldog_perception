@@ -3,7 +3,7 @@
 <package format="3">
   <name>meldog_perception</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Person detection and re-identification for the Meldog quadruped robot (YOLO + OSNet, ONNX Runtime / TensorRT)</description>
   <maintainer email="tymoteuszpiwonski@gmail.com">tymon</maintainer>
   <license>TODO: License declaration</license>
 
@@ -11,6 +11,11 @@
 
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <depend>libopencv-dev</depend>
+
+  <!-- Inference backends have no rosdep keys, install them manually (see README):
+         ONNX Runtime (CMake option MELDOG_HAS_ONNXRUNTIME, default ON)  - /opt/onnxruntime, installed in .devcontainer/Dockerfile
+         CUDA + TensorRT (CMake option MELDOG_HAS_TENSORRT, default OFF) - shipped with JetPack on the Jetson -->
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

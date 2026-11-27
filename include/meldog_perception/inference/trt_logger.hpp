@@ -5,7 +5,7 @@
 
 #include <NvInfer.h>
 
-namespace meldog_perception {
+namespace meldog_perception::inference {
 
     class TrtLogger final : public nvinfer1::ILogger
     {

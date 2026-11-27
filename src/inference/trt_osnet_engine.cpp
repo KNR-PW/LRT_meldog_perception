@@ -1,6 +1,3 @@
-#include <meldog_perception/so_net_engine.hpp>
-#include <meldog_perception/trt_logger.hpp>
-
 #include <stdexcept>
 #include <fstream>
 #include <algorithm>
@@ -8,12 +5,15 @@
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
 
-namespace meldog_perception {
+#include "meldog_perception/inference/trt_osnet_engine.hpp"
+#include "meldog_perception/inference/trt_logger.hpp"
 
-    SoNetEngine::SoNetEngine(const std::string& networkPath)
+namespace meldog_perception::inference {
+
+    TrtOsNetEngine::TrtOsNetEngine(const std::string& networkPath)
     {
         if (networkPath.empty()) {
-            throw std::runtime_error("[SoNetEngine] Invalid network path");
+            throw std::runtime_error("[TrtOsNetEngine] Invalid network path");
         }
 
         _nvLogger = std::make_unique<TrtLogger>();
@@ -23,18 +23,18 @@ namespace meldog_perception {
         initializeGpuBuffers();
     }
 
-    SoNetEngine::~SoNetEngine() = default;
+    TrtOsNetEngine::~TrtOsNetEngine() = default;
 
-    std::vector<std::vector<float>> SoNetEngine::infer(const std::vector<std::vector<float>>& data)
+    std::vector<std::vector<float>> TrtOsNetEngine::infer(const std::vector<std::vector<float>>& data)
     {
         if (std::any_of(data.begin(), data.end(), [this](const std::vector<float>& x) { return x.size() != _sampleSize; })) {
-            throw std::runtime_error("[SoNetEngine] Every input sample must have exactly " + std::to_string(_sampleSize) + " values");
+            throw std::runtime_error("[TrtOsNetEngine] Every input sample must have exactly " + std::to_string(_sampleSize) + " values");
         }
 
         const size_t batchSize = data.size();
 
         if (batchSize < 1 || batchSize > _maxBatch) {
-            throw std::runtime_error("[SoNetEngine] Batch size must be in range 1.." + std::to_string(_maxBatch) + 
+            throw std::runtime_error("[TrtOsNetEngine] Batch size must be in range 1.." + std::to_string(_maxBatch) + 
                 ", got " + std::to_string(batchSize));
         }
 
@@ -42,7 +42,7 @@ namespace meldog_perception {
         dims.d[0] = static_cast<int>(batchSize); 
 
         if (!_nvExecutionContext->setInputShape(_inputName, dims)) {
-            throw std::runtime_error("[SoNetEngine] Couldn't set input shape for batch size " + std::to_string(batchSize));
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't set input shape for batch size " + std::to_string(batchSize));
         }
 
         std::vector<float> flatInput(batchSize * _sampleSize);
@@ -54,7 +54,7 @@ namespace meldog_perception {
             cudaMemcpyHostToDevice, _cudaStream.get()), "cudaMemcpyAsync(hostToDevice)");
 
         if (!_nvExecutionContext->enqueueV3(_cudaStream.get())) {
-            throw std::runtime_error("[SoNetEngine] Couldn't enqueue inference (enqueueV3 failed)");
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't enqueue inference (enqueueV3 failed)");
         }
 
         std::vector<float> modelResult(batchSize * _embeddingSize);
@@ -75,46 +75,46 @@ namespace meldog_perception {
         return result;
     }
 
-    void SoNetEngine::initializeNetwork(const std::string& networkPath)
+    void TrtOsNetEngine::initializeNetwork(const std::string& networkPath)
     {
         std::ifstream file(networkPath, std::ios::binary | std::ios::ate);
         if (!file) {
-            throw std::runtime_error("[SoNetEngine] Couldn't open engine file: " + networkPath);
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't open engine file: " + networkPath);
         }
 
         const std::streamoff size = file.tellg();
         if (size <= 0) {
-            throw std::runtime_error("[SoNetEngine] Engine file is empty: " + networkPath);
+            throw std::runtime_error("[TrtOsNetEngine] Engine file is empty: " + networkPath);
         }
 
         std::vector<char> data(static_cast<std::size_t>(size));
         file.seekg(0, std::ios::beg);
 
         if (!file.read(data.data(), static_cast<std::streamsize>(size))) {
-            throw std::runtime_error("[SoNetEngine] Couldn't read engine file: " + networkPath);
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't read engine file: " + networkPath);
         }
 
         _nvRuntime.reset(nvinfer1::createInferRuntime(*_nvLogger));
         if (!_nvRuntime) {
-            throw std::runtime_error("[SoNetEngine] Couldn't create TensorRT runtime");
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't create TensorRT runtime");
         }
 
         _nvCudaEngine.reset(_nvRuntime->deserializeCudaEngine(data.data(), data.size()));
         if (!_nvCudaEngine) {
-            throw std::runtime_error("[SoNetEngine] Couldn't deserialize engine: " + networkPath);
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't deserialize engine: " + networkPath);
         }
 
         _nvExecutionContext.reset(_nvCudaEngine->createExecutionContext());
         if (!_nvExecutionContext) {
-            throw std::runtime_error("[SoNetEngine] Couldn't create execution context");
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't create execution context");
         }
     }
 
-    void SoNetEngine::validateTensors() const
+    void TrtOsNetEngine::validateTensors() const
     {
         const int32_t tensorCount = _nvCudaEngine->getNbIOTensors();
         if (tensorCount != 2) {
-            throw std::runtime_error("[SoNetEngine] Expected 1 input and 1 output tensor, got " + std::to_string(tensorCount) + " tensors");
+            throw std::runtime_error("[TrtOsNetEngine] Expected 1 input and 1 output tensor, got " + std::to_string(tensorCount) + " tensors");
         }
 
         const char* inputName = nullptr;
@@ -124,7 +124,7 @@ namespace meldog_perception {
             const char* name = _nvCudaEngine->getIOTensorName(i);
 
             if (_nvCudaEngine->getTensorDataType(name) != nvinfer1::DataType::kFLOAT) {
-                throw std::runtime_error(std::string("[SoNetEngine] Tensor ") + name + " is not float32");
+                throw std::runtime_error(std::string("[TrtOsNetEngine] Tensor ") + name + " is not float32");
             }
 
             if (_nvCudaEngine->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT) {
@@ -135,7 +135,7 @@ namespace meldog_perception {
         }
 
         if (inputName == nullptr || outputName == nullptr) {
-            throw std::runtime_error("[SoNetEngine] Engine needs one input and one output tensor");
+            throw std::runtime_error("[TrtOsNetEngine] Engine needs one input and one output tensor");
         }
 
         const nvinfer1::Dims inputDims = _nvCudaEngine->getTensorShape(inputName);
@@ -159,14 +159,14 @@ namespace meldog_perception {
         }
     }
 
-    void SoNetEngine::checkCuda(cudaError_t status, const char* what)
+    void TrtOsNetEngine::checkCuda(cudaError_t status, const char* what)
     {
         if (status != cudaSuccess) {
-            throw std::runtime_error(std::string("[SoNetEngine] ") + what + " failed: " + cudaGetErrorString(status));
+            throw std::runtime_error(std::string("[TrtOsNetEngine] ") + what + " failed: " + cudaGetErrorString(status));
         }
     }
 
-    void SoNetEngine::initializeGpuBuffers()
+    void TrtOsNetEngine::initializeGpuBuffers()
     {
         const char* outputName = nullptr;
 
@@ -213,11 +213,11 @@ namespace meldog_perception {
 
         if (!_nvExecutionContext->setTensorAddress(_inputName, _inputBuffer.get()) ||
             !_nvExecutionContext->setTensorAddress(outputName, _outputBuffer.get())) {
-            throw std::runtime_error("[SoNetEngine] Couldn't bind tensor addresses");
+            throw std::runtime_error("[TrtOsNetEngine] Couldn't bind tensor addresses");
         }
     }
 
-    std::pair<std::size_t, std::size_t> SoNetEngine::getInputDim() const
+    std::pair<std::size_t, std::size_t> TrtOsNetEngine::getInputDim() const
     {
         return std::pair<std::size_t, std::size_t>(_inputHeight, _inputWidth);
     }

@@ -6,13 +6,14 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "so_net_engine.hpp"
+#include "meldog_perception/inference/i_osnet_engine.hpp"
 
 namespace meldog_perception {
 
     struct ReidConfig {
         std::size_t minBoxHeight = 32; // px
-        std::size_t minBoxWidth = 12; // px 
+        std::size_t minBoxWidth = 12; // px
+        std::size_t maxBatchSize = 8; // crops per inference call, capped by the engine's own limit (TensorRT profile kMAX)
     };
 
     class ReidEncoder 
@@ -27,9 +28,11 @@ namespace meldog_perception {
     private:
 
         std::vector<float> preprocess(const cv::Mat& rgbImage, const cv::Mat& mask, const cv::Rect& bbox) const;
- 
+
+        void validateConfig(const ReidConfig& config);
+
     private:
-        SoNetEngine _soNetModel; 
+        std::unique_ptr<inference::IOsNetEngine> _osNetengine; 
         ReidConfig _config;
     };
 }
