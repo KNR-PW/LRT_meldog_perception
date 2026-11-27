@@ -9,6 +9,15 @@ namespace meldog_perception::tracking {
 
     namespace {
 
+        // Fixed parts of ByteTrack, as in the reference implementation.
+        constexpr float kLowThreshold = 0.1F;           // weaker detections are ignored
+        constexpr float kNewTrackMargin = 0.1F;         // new track needs highThreshold + this
+        constexpr float kSecondMatchThreshold = 0.5F;   // visible tracks vs low-score detections
+        constexpr float kUnconfirmedMatchThreshold = 0.7F;
+        constexpr float kDuplicateIou = 0.85F;          // tracked and lost track on the same person
+        // Kalman noise is tuned per frame at this rate; other rates are scaled to it.
+        constexpr double kReferenceFps = 30.0;
+
         float iou(const cv::Rect2f& a, const cv::Rect2f& b)
         {
             const float intersection = (a & b).area();
@@ -25,7 +34,6 @@ namespace meldog_perception::tracking {
     ByteTracker::TrackData::TrackData(const Detection& detection, int index, double timestamp)
         : filter(detection.box),
           score(detection.score),
-          classId(detection.classId),
           detectionIndex(index),
           firstSeen(timestamp),
           lastSeen(timestamp)
@@ -48,7 +56,7 @@ namespace meldog_perception::tracking {
             reset();
         }
 
-        const double steps = _hasTimestamp ? (timestamp - _lastTimestamp) * _config.referenceFps : 1.0;
+        const double steps = _hasTimestamp ? (timestamp - _lastTimestamp) * kReferenceFps : 1.0;
         _hasTimestamp = true;
         _lastTimestamp = timestamp;
 
@@ -66,7 +74,7 @@ namespace meldog_perception::tracking {
             }
             if (detection.score >= _config.highThreshold) {
                 high.push_back(i);
-            } else if (detection.score >= _config.lowThreshold) {
+            } else if (detection.score >= kLowThreshold) {
                 low.push_back(i);
             }
         }
@@ -79,7 +87,7 @@ namespace meldog_perception::tracking {
 
         // 1. Confirmed and lost tracks vs high-score detections.
         const Association first =
-            associate(confirmed, high, detections, _config.matchThreshold, _config.fuseScore);
+            associate(confirmed, high, detections, _config.matchThreshold, true);
         for (const auto& [track, detection] : first.matches) {
             applyMatch(_tracks[track], detections, detection, timestamp);
         }
@@ -92,7 +100,7 @@ namespace meldog_perception::tracking {
             }
         }
         const Association second =
-            associate(remaining, low, detections, _config.secondMatchThreshold, false);
+            associate(remaining, low, detections, kSecondMatchThreshold, false);
         for (const auto& [track, detection] : second.matches) {
             applyMatch(_tracks[track], detections, detection, timestamp);
         }
@@ -102,7 +110,7 @@ namespace meldog_perception::tracking {
 
         // 3. Tracks started in the previous frame vs the remaining high-score detections.
         const Association third = associate(tentative, first.unmatchedDetections, detections,
-                                            _config.unconfirmedMatchThreshold, _config.fuseScore);
+                                            kUnconfirmedMatchThreshold, true);
         for (const auto& [track, detection] : third.matches) {
             applyMatch(_tracks[track], detections, detection, timestamp);
             confirm(_tracks[track], timestamp);
@@ -113,7 +121,7 @@ namespace meldog_perception::tracking {
 
         // 4. New tracks from what is left.
         for (const size_t detection : third.unmatchedDetections) {
-            if (detections[detection].score < _config.newTrackThreshold) {
+            if (detections[detection].score < _config.highThreshold + kNewTrackMargin) {
                 continue;
             }
             _tracks.emplace_back(detections[detection], static_cast<int>(detection), timestamp);
@@ -193,10 +201,8 @@ namespace meldog_perception::tracking {
         const Detection& detection = detections[index];
         track.filter.update(detection.box);
         track.score = detection.score;
-        track.classId = detection.classId;
         track.detectionIndex = static_cast<int>(index);
         track.lastSeen = timestamp;
-        ++track.hits;
         if (track.state == TrackState::Lost) {
             track.state = TrackState::Tracked;
         }
@@ -232,7 +238,7 @@ namespace meldog_perception::tracking {
                 if (lost.state != TrackState::Lost) {
                     continue;
                 }
-                if (iou(tracked.filter.box(), lost.filter.box()) <= _config.duplicateIou) {
+                if (iou(tracked.filter.box(), lost.filter.box()) <= kDuplicateIou) {
                     continue;
                 }
                 if (tracked.firstSeen <= lost.firstSeen) {
@@ -255,13 +261,10 @@ namespace meldog_perception::tracking {
             Track out;
             out.id = track.id;
             out.box = track.filter.box();
-            out.velocity = track.filter.velocity() * static_cast<float>(_config.referenceFps);
+            out.velocity = track.filter.velocity() * static_cast<float>(kReferenceFps);
             out.score = track.score;
-            out.classId = track.classId;
             out.detectionIndex = track.detectionIndex;
-            out.firstSeen = track.firstSeen;
             out.lastSeen = track.lastSeen;
-            out.hits = track.hits;
             _output.push_back(out);
         }
         std::sort(_output.begin(), _output.end(), [](const Track& a, const Track& b) { return a.id < b.id; });

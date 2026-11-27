@@ -36,7 +36,6 @@ def generate_launch_description():
             PathJoinSubstitution([pkg_share, "config", "person_detector.yaml"]),
             {
                 "model_path": LaunchConfiguration("model_path"),
-                "backend": LaunchConfiguration("backend"),
                 "publish_debug_image": LaunchConfiguration("debug_image"),
             },
         ],
@@ -51,6 +50,7 @@ def generate_launch_description():
             PathJoinSubstitution([pkg_share, "config", "person_tracker.yaml"]),
             {"publish_debug_image": LaunchConfiguration("debug_image")},
         ],
+        remappings=[("image", "/camera/camera/color/image_raw")],  # only for the debug image
     )
 
     return LaunchDescription([
@@ -67,12 +67,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "model_path",
             default_value=PathJoinSubstitution([pkg_share, "models", "yolo26n.onnx"]),
-            description="YOLO .onnx model (TensorRT builds and caches an engine next to it).",
-        ),
-        DeclareLaunchArgument(
-            "backend",
-            default_value="auto",
-            description="auto | tensorrt | onnxruntime",
+            description="YOLO model: .onnx (ONNX Runtime) or .engine (TensorRT, scripts/build_engine.sh).",
         ),
         DeclareLaunchArgument(
             "debug_image",

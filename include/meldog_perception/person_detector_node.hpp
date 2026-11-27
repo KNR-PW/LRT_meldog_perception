@@ -25,8 +25,6 @@ namespace meldog_perception {
         void publishDebugImage(const sensor_msgs::msg::Image& source, const cv::Mat& rgb,
                                const std::vector<Detection>& detections);
 
-        void logTiming();
-
     private:
 
         std::unique_ptr<YoloDetector> _detector;
@@ -34,9 +32,5 @@ namespace meldog_perception {
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr _imageSub;
         rclcpp::Publisher<vision_msgs::msg::Detection2DArray>::SharedPtr _detectionsPub;
         rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr _debugImagePub;
-
-        rclcpp::TimerBase::SharedPtr _timingTimer;
-        DetectorTiming _timingSum;
-        size_t _timedFrames = 0;
     };
 }

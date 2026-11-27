@@ -30,36 +30,70 @@ if you want to use the camera.
 `build/`, `install/`, `log/` and the ccache live in Docker volumes (`meldog-humble-*`), so they
 survive container rebuilds. Remove them with `docker volume rm` to start clean.
 
+## Inference backends
+
+YOLO (person detection) and OSNet (re-identification) run on one of two backends, chosen by the
+model file extension:
+
+| CMake option | Default | Model | Dependency |
+|---|---|---|---|
+| `MELDOG_HAS_ONNXRUNTIME` | `ON` | `.onnx` | ONNX Runtime in `/opt/onnxruntime` (or `-DONNXRUNTIME_ROOT=<prefix>`) |
+| `MELDOG_HAS_TENSORRT` | `OFF` | `.engine` | CUDA + TensorRT 8.5+ (JetPack on the Jetson) |
+
+The dev container already has ONNX Runtime. To build outside the container, install it the same way
+(see the ONNX Runtime step in `.devcontainer/Dockerfile`):
+
+```bash
+ORT_VERSION=1.32.0
+curl -fsSL -o /tmp/ort.nupkg https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/${ORT_VERSION}/microsoft.ml.onnxruntime.${ORT_VERSION}.nupkg
+python3 -m zipfile -e /tmp/ort.nupkg /tmp/ort_nuget
+sudo mkdir -p /opt/onnxruntime-${ORT_VERSION}/include /opt/onnxruntime-${ORT_VERSION}/lib
+sudo cp /tmp/ort_nuget/build/native/include/*.h /opt/onnxruntime-${ORT_VERSION}/include/
+sudo cp /tmp/ort_nuget/runtimes/linux-x64/native/*.so /opt/onnxruntime-${ORT_VERSION}/lib/   # linux-arm64 on ARM
+sudo ln -sf libonnxruntime.so /opt/onnxruntime-${ORT_VERSION}/lib/libonnxruntime.so.1
+sudo ln -sfn /opt/onnxruntime-${ORT_VERSION} /opt/onnxruntime
+echo /opt/onnxruntime/lib | sudo tee /etc/ld.so.conf.d/onnxruntime.conf && sudo ldconfig
+```
+
+`osnet.onnx` keeps its weights in `osnet.onnx.data`: both files must stay in the same directory.
+
 ## Person detection
 
 `person_detector` runs YOLO26 on the color stream and publishes
 `vision_msgs/Detection2DArray` on `detections` (optionally `detections/image` with drawn boxes).
 Parameters live in `config/person_detector.yaml`.
 
-Inference backends (`backend` parameter, `auto` picks the first available):
-
-| Backend | Where | Built when |
-|---|---|---|
-| `tensorrt` | Jetson, x86 with an NVIDIA GPU | TensorRT + CUDA are found |
-| `onnxruntime` | any CPU (devcontainer) | ONNX Runtime is in `/opt/onnxruntime` |
-
-TensorRT builds an engine from the `.onnx` on first start (minutes on the Jetson) and caches it
-next to the model as `<model>.<gpu>.trt<version>.fp16.b1.engine`. Engines are GPU- and
-version-specific and are not committed.
+`model_path` takes a `.onnx` (ONNX Runtime, CPU) or a `.engine` (TensorRT). The engine is built
+once on the target device, it is specific to its GPU and TensorRT version and is not committed:
 
 ```bash
 # export the model (host venv, see below) -> models/yolo26n.onnx, output [1, 300, 6]
 python3 scripts/export_yolo.py models/yolo26n.pt
 
-# live camera
+# Jetson: .onnx -> .engine with trtexec, prints latency and throughput
+scripts/build_engine.sh models/yolo26n.onnx            # FP16 -> models/yolo26n.engine
+scripts/build_engine.sh models/yolo26n.onnx --fp32     # FP32 -> models/yolo26n.fp32.engine
+scripts/build_engine.sh models/yolo26n.engine          # benchmark an existing engine
+
+# live camera (Jetson: model_path:=<path>/yolo26n.engine)
 ros2 launch meldog_perception perception.launch.py debug_image:=true
 # rosbag instead of the camera
 ros2 launch meldog_perception perception.launch.py use_camera:=false
 
-# one image, no ROS: check an export or benchmark a backend
-ros2 run meldog_perception detect_image models/yolo26n.onnx image.jpg --backend tensorrt --runs 200
+# one image, no ROS: check that a model gives the expected boxes
+ros2 run meldog_perception detect_image models/yolo26n.engine image.jpg
 # the same image through Ultralytics, for comparison
 python3 scripts/reference_detect.py models/yolo26n.onnx image.jpg
+```
+
+Build engines with `trtexec` (the script above), not with `export_yolo.py --format engine`:
+Ultralytics prepends its own metadata to the file, which `TrtYoloEngine` cannot deserialize.
+
+On the Jetson, build with TensorRT and without ONNX Runtime:
+
+```bash
+colcon build --packages-select meldog_perception --cmake-args -DCMAKE_BUILD_TYPE=Release \
+  -DMELDOG_HAS_TENSORRT=ON -DMELDOG_HAS_ONNXRUNTIME=OFF -DCUDAToolkit_ROOT=/usr/local/cuda
 ```
 
 ## Person tracking
@@ -81,4 +115,4 @@ with IDs and velocity arrows. Parameters live in `config/person_tracker.yaml`.
 ## Model export (host, outside the container)
 
 See `scripts/requirements.txt`: export runs in a separate venv with CPU-only torch.
-On the Jetson, `.onnx` → `.engine` is done with JetPack's TensorRT.
+On the Jetson, `.onnx` → `.engine` is done with JetPack's TensorRT (`scripts/build_engine.sh`).
