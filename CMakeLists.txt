@@ -25,7 +25,7 @@ find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs dnn)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 
 set(MELDOG_BACKENDS "")
 
@@ -39,10 +39,8 @@ if(MELDOG_HAS_TENSORRT)
   set(TENSORRT_ROOT "" CACHE PATH "TensorRT install prefix (only for tarball installs)")
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h HINTS ${TENSORRT_ROOT} PATH_SUFFIXES include)
   find_library(TENSORRT_LIBRARY nvinfer HINTS ${TENSORRT_ROOT} PATH_SUFFIXES lib lib64)
-  # nvonnxparser: only TensorRtBackend (YOLO) uses it, to build engines from .onnx at runtime
-  find_library(TENSORRT_ONNXPARSER_LIBRARY nvonnxparser HINTS ${TENSORRT_ROOT} PATH_SUFFIXES lib lib64)
-  if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIBRARY OR NOT TENSORRT_ONNXPARSER_LIBRARY)
-    message(FATAL_ERROR "TensorRT not found (NvInfer.h / libnvinfer / libnvonnxparser). Install it, set -DTENSORRT_ROOT=<prefix>, "
+  if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIBRARY)
+    message(FATAL_ERROR "TensorRT not found (NvInfer.h / libnvinfer). Install it, set -DTENSORRT_ROOT=<prefix>, "
                         "or disable this backend with -DMELDOG_HAS_TENSORRT=OFF")
   endif()
 
@@ -83,7 +81,7 @@ add_library(meldog_perception_core STATIC
   src/target_identifier.cpp
   src/reid_encoder.cpp
   src/inference/osnet_engine_factory.cpp
-  src/inference/inference_backend.cpp
+  src/inference/yolo_engine_factory.cpp
   src/yolo_detector.cpp
   src/tracking/kalman_box_filter.cpp
   src/tracking/linear_assignment.cpp
@@ -96,20 +94,20 @@ target_link_libraries(meldog_perception_core PUBLIC ${OpenCV_LIBS})
 if(MELDOG_HAS_TENSORRT)
   target_sources(meldog_perception_core PRIVATE
     src/inference/trt_osnet_engine.cpp
-    src/inference/tensorrt_backend.cpp
+    src/inference/trt_yolo_engine.cpp
   )
   target_compile_definitions(meldog_perception_core PRIVATE MELDOG_HAS_TENSORRT)
   target_include_directories(meldog_perception_core SYSTEM PRIVATE ${TENSORRT_INCLUDE_DIR})
   target_link_libraries(meldog_perception_core
     PUBLIC  CUDA::cudart
-    PRIVATE ${TENSORRT_LIBRARY} ${TENSORRT_ONNXPARSER_LIBRARY}
+    PRIVATE ${TENSORRT_LIBRARY}
   )
 endif()
 
 if(MELDOG_HAS_ONNXRUNTIME)
   target_sources(meldog_perception_core PRIVATE
     src/inference/onnx_osnet_engine.cpp
-    src/inference/onnxruntime_backend.cpp
+    src/inference/onnx_yolo_engine.cpp
   )
   target_compile_definitions(meldog_perception_core PRIVATE MELDOG_HAS_ONNXRUNTIME)
   target_include_directories(meldog_perception_core SYSTEM PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
@@ -153,7 +151,7 @@ install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
 )
 install(DIRECTORY models/ DESTINATION share/${PROJECT_NAME}/models
-  FILES_MATCHING PATTERN "*.onnx")
+  FILES_MATCHING PATTERN "*.onnx" PATTERN "*.engine")
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
